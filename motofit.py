@@ -130,7 +130,6 @@ if submitted and ort and api_key:
         if ziel_temp is not None:
             zeige_wetterblock("🏁 Wetter am Zielort:", ziel, ziel_temp, ziel_feels_like, ziel_wind, ziel_hum, ziel_desc, ziel_warnung)
 
-            # Fahrtzeit schätzen
             geolocator = Nominatim(user_agent="motofit-routing")
             start = geolocator.geocode(ort)
             zielpunkt = geolocator.geocode(ziel)
@@ -156,7 +155,10 @@ if submitted and ort and api_key:
         if ziel:
             stunden = verwendete_zeit // 60
             minuten = verwendete_zeit % 60
-            st.markdown(f"### ⏱️ Geschätzte Fahrtzeit: {stunden} Stunde{'n' if stunden != 1 else ''} und {minuten} Minute{'n' if minuten != 1 else ''}")
+            if stunden > 0:
+                st.markdown(f"### ⏱️ Geschätzte Fahrtzeit: {stunden} Stunde{'n' if stunden != 1 else ''} und {minuten} Minute{'n' if minuten != 1 else ''}")
+            else:
+                st.markdown(f"### ⏱️ Geschätzte Fahrtzeit: {minuten} Minute{'n' if minuten != 1 else ''}")
 
         st.markdown("### 👕 Kleidungsempfehlung")
         for teil in vorschlag:
