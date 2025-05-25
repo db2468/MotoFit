@@ -65,7 +65,7 @@ def empfehlung(temp_c, wind_kmh, fahrtzeit_min, empfindlichkeit):
     return kleidung
 
 # Streamlit UI
-st.title("🏍️ MotoFit – Kleidungsempfehlung für Biker")
+st.title(" MotoFit – Kleidungsempfehlung für Biker")
 
 st.markdown("Gib deinen Ort an und erhalte wetterbasierte Empfehlungen für dein Motorrad-Outfit.")
 
