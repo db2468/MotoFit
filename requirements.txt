@@ -2,3 +2,5 @@ streamlit
 requests
 geopy
 openrouteservice
+folium
+streamlit-folium
