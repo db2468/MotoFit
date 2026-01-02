@@ -1,188 +1,154 @@
-import streamlit as st
-import requests
-import openrouteservice
-from geopy.geocoders import Nominatim
-from geopy.distance import geodesic
+const express = require("express");
+const basicAuth = require("express-basic-auth");
+const fs = require("fs");
+const path = require("path");
 
-# Wetterdaten abrufen
-@st.cache_data
-def get_weather_data(city, api_key):
-    url = f"http://api.openweathermap.org/data/2.5/weather?q={city}&units=metric&appid={api_key}&lang=de"
-    response = requests.get(url)
-    if response.status_code == 200:
-        data = response.json()
-        temp = data['main']['temp']
-        wind_speed = data['wind']['speed'] * 3.6
-        regen = data['weather'][0]['main']
-        hum = data['main']['humidity']
-        feels_like = data['main']['feels_like']
-        desc = data['weather'][0]['description']
-        warnung = regen.lower() in ["thunderstorm", "extreme", "tornado"]
-        return temp, wind_speed, regen, hum, feels_like, desc, warnung
-    else:
-        st.error("❌ Fehler beim Abrufen der Wetterdaten.")
-        return None, None, None, None, None, None, False
+const app = express();
+app.use(express.urlencoded({ extended: true }));
 
-# ORS: echte Fahrtzeit holen
-@st.cache_data
-def get_ors_duration(start_coords, ziel_coords, api_key):
-    client = openrouteservice.Client(key=api_key)
-    try:
-        route = client.directions(
-            coordinates=[start_coords, ziel_coords],
-            profile='driving-car',
-            format='geojson'
-        )
-        duration_sec = route['features'][0]['properties']['summary']['duration']
-        return round(duration_sec / 60)
-    except Exception as e:
-        st.warning(f"ORS Fehler: {e}")
-        return None
+const DATA_FILE = path.join(__dirname, "ideas.json");
 
-# Geocoding
-@st.cache_data
-def cached_geocode(location):
-    geolocator = Nominatim(user_agent="motofit-routing")
-    return geolocator.geocode(location)
+// Passwort: 1243
+const ADMIN_USER = "admin";
+const ADMIN_PASS = "1243";
 
-# Wetteranzeige
-def zeige_wetterblock(titel, ort, temp, feels_like, wind, hum, desc, warnung):
-    st.markdown(f"### {titel} **{ort}**")
-    st.info(f"🌡️ Temperatur: {temp:.1f}°C (gefühlt {feels_like:.1f}°C)  \n💨 Wind: {wind:.1f} km/h  \n💧 Luftfeuchtigkeit: {hum}%  \n☁️ Wetter: {desc}")
-    if warnung:
-        st.warning("⚠️ Wetterwarnung: Bitte besondere Vorsicht walten lassen!")
+function loadIdeas() {
+  try {
+    const raw = fs.readFileSync(DATA_FILE, "utf8");
+    const data = JSON.parse(raw);
+    return Array.isArray(data) ? data : [];
+  } catch {
+    return [];
+  }
+}
 
-# Kleidungsempfehlung
-def empfehlung(temp_c, wind_kmh, fahrtzeit_min, empfindlichkeit, typ, regen):
-    windfaktor_map = {
-        "Moped/Roller (max 45 km/h)": 0.5,
-        "Supermoto": 0.8,
-        "Sportler": 1.3,
-        "Tourer": 1.0
-    }
-    windfaktor = windfaktor_map.get(typ, 1.0)
-    windchill = temp_c - (wind_kmh * windfaktor / 10)
-    gefuehlt = windchill - (0.1 * fahrtzeit_min)
+function saveIdeas(ideas) {
+  fs.writeFileSync(DATA_FILE, JSON.stringify(ideas, null, 2), "utf8");
+}
 
-    if empfindlichkeit == "Kälteempfindlich":
-        gefuehlt -= 2
-    elif empfindlichkeit == "Unempfindlich":
-        gefuehlt += 2
+// ===== Public page: form =====
+app.get("/", (req, res) => {
+  res.type("html").send(`
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>3D-Druck Ideen</title>
+  <style>
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; }
+    h1 { margin: 0 0 12px; }
+    p { margin: 0 0 20px; color: #444; }
+    textarea { width: 100%; min-height: 120px; padding: 12px; font-size: 16px; }
+    button { margin-top: 12px; padding: 10px 14px; font-size: 16px; cursor: pointer; }
+    .note { margin-top: 18px; color: #666; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h1>3D-Druck Idee eintragen</h1>
+  <p>Schreib deine Idee rein und sende ab.</p>
 
-    if gefuehlt < 5:
-        vorschlag = [
-            "Thermounterwäsche (langarm, eng anliegend)",
-            "Fleece oder dünne Softshell",
-            "Textiljacke mit Thermofutter + Protektoren",
-            "Motorradhose mit Thermofutter",
-            "Balaclava, Nierengurt, Winterhandschuhe"
-        ]
-    elif gefuehlt < 10:
-        vorschlag = [
-            "Langarmshirt",
-            "Dünner Pullover oder Softshell",
-            "Textiljacke mit leichtem Futter",
-            "Motorradhose mit Futter oder Leggings",
-            "Halstuch, normale Handschuhe"
-        ]
-    elif gefuehlt < 15:
-        vorschlag = [
-            "T-Shirt",
-            "Optionaler Midlayer",
-            "Textiljacke (belüftet)",
-            "Luftige Motorradhose",
-            "Dünne Handschuhe, Sonnenvisier"
-        ]
-    else:
-        vorschlag = [
-            "T-Shirt oder Funktionsshirt",
-            "Sommerjacke mit Protektoren",
-            "Sommer-Motorradhose oder Kevlar-Jeans",
-            "Leichte Handschuhe, getöntes Visier"
-        ]
+  <form method="POST" action="/submit">
+    <textarea name="idea" placeholder="z.B. Halterung für ... / Werkzeugbox ... / Scooter-Teil ..."></textarea>
+    <br />
+    <button type="submit">Absenden</button>
+  </form>
 
-    if any(r in regen.lower() for r in ["rain", "drizzle", "thunderstorm"]):
-        vorschlag += [
-            "Regenkombi mitnehmen (Jacke & Hose wasserdicht)",
-            "Wasserdichte Handschuhe & Stiefel"
-        ]
-    return vorschlag
+  <div class="note">
+    Admin-Ansicht: <code>/admin</code>
+  </div>
+</body>
+</html>
+  `);
+});
 
-# UI
-st.markdown("""
-    <h1 style='text-align: center; font-family: Helvetica, sans-serif; color: #ff4b4b;'>🏍️ <span style='font-weight: 700;'>MotoFit</span></h1>
-    <h3 style='text-align: center; font-family: Helvetica, sans-serif; color: gray;'>Dein smarter Outfit-Check fürs Motorrad</h3>
-    <hr>
-""", unsafe_allow_html=True)
+app.post("/submit", (req, res) => {
+  const idea = (req.body.idea || "").trim();
+  if (!idea) {
+    return res.status(400).type("html").send("Leeres Feld. Geh zurück und schreib was rein.");
+  }
 
-# Eingabeformular
-with st.form("Eingabeformular"):
-    col1, col2 = st.columns(2)
-    ort = col1.text_input("📍 Startort", "Leipzig")
-    ziel = col2.text_input("🏁 Zielort", "")
+  const ideas = loadIdeas();
+  ideas.unshift({
+    idea,
+    createdAt: new Date().toISOString(),
+    ip: req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() || req.socket.remoteAddress
+  });
+  saveIdeas(ideas);
 
-    weather_api_key = st.secrets["weather_api_key"] if "weather_api_key" in st.secrets else st.text_input("🔑 Wetter-API-Schlüssel")
-    ors_api_key = st.secrets["ors_api_key"] if "ors_api_key" in st.secrets else st.text_input("🧭 ORS API-Key")
+  res.type("html").send(`
+<!doctype html>
+<html lang="de">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gespeichert</title></head>
+<body style="font-family:system-ui;max-width:720px;margin:40px auto;padding:0 16px;">
+  <h2>Gespeichert.</h2>
+  <p><a href="/">Zurück</a></p>
+</body>
+</html>
+  `);
+});
 
-    col3, col4 = st.columns(2)
-    typ = col3.selectbox("🏍️ Motorradtyp", ["Sportler", "Supermoto", "Moped/Roller (max 45 km/h)", "Tourer"])
-    empf = col4.radio("❄️ Kälteempfinden", ["Kälteempfindlich", "Normal", "Unempfindlich"])
+// ===== Admin page: protected list =====
+app.use(
+  "/admin",
+  basicAuth({
+    users: { [ADMIN_USER]: ADMIN_PASS },
+    challenge: true, // Browser zeigt Login-Popup
+    realm: "Admin",
+  })
+);
 
-    submitted = st.form_submit_button("🔍 Check starten")
+app.get("/admin", (req, res) => {
+  const ideas = loadIdeas();
 
-# Hauptlogik
-if submitted and ort and weather_api_key and ors_api_key:
-    temp, wind, regen, hum, feels_like, desc, warnung = get_weather_data(ort, weather_api_key)
-    if temp is not None:
-        zeige_wetterblock("📍 Wetter am Startort:", ort, temp, feels_like, wind, hum, desc, warnung)
+  const items = ideas
+    .map((x, i) => {
+      const dt = new Date(x.createdAt);
+      const dateStr = isNaN(dt.getTime()) ? x.createdAt : dt.toLocaleString("de-DE");
+      return `
+        <li style="margin:14px 0; padding:12px; border:1px solid #ddd; border-radius:10px;">
+          <div style="color:#666;font-size:13px;margin-bottom:8px;">
+            #${ideas.length - i} • ${dateStr}
+          </div>
+          <div style="white-space:pre-wrap;">${escapeHtml(x.idea)}</div>
+        </li>
+      `;
+    })
+    .join("");
 
-        verwendete_zeit = 45  # fallback
-        vorschlag = None
-        start = cached_geocode(ort)
+  res.type("html").send(`
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin – Ideen</title>
+</head>
+<body style="font-family:system-ui;max-width:900px;margin:40px auto;padding:0 16px;">
+  <h1>Ideen (${ideas.length})</h1>
+  <p style="color:#444;">Passwortgeschützt. Hier siehst du alle Einträge.</p>
 
-        if not start:
-            st.error(f"❌ Startort '{ort}' konnte nicht gefunden werden.")
-        else:
-            if ziel:
-                zielpunkt = cached_geocode(ziel)
-                if not zielpunkt:
-                    st.warning(f"⚠️ Zielort '{ziel}' konnte nicht gefunden werden. Verwende Standardzeit.")
-                else:
-                    ziel_temp, ziel_wind, ziel_regen, ziel_hum, ziel_feels_like, ziel_desc, ziel_warnung = get_weather_data(ziel, weather_api_key)
-                    if ziel_temp is not None:
-                        zeige_wetterblock("🏁 Wetter am Zielort:", ziel, ziel_temp, ziel_feels_like, ziel_wind, ziel_hum, ziel_desc, ziel_warnung)
+  ${ideas.length ? `<ol style="padding-left:18px;">${items}</ol>` : `<p>Noch keine Ideen.</p>`}
 
-                        start_coords = (start.longitude, start.latitude)
-                        ziel_coords = (zielpunkt.longitude, zielpunkt.latitude)
-                        verwendete_zeit = get_ors_duration(start_coords, ziel_coords, ors_api_key)
+  <hr style="margin:24px 0;" />
+  <p><a href="/">Zur öffentlichen Seite</a></p>
+</body>
+</html>
+  `);
+});
 
-                        if verwendete_zeit is None:
-                            entfernung_km = geodesic((start.latitude, start.longitude), (zielpunkt.latitude, zielpunkt.longitude)).km
-                            geschwindigkeit = 45 if typ == "Moped/Roller (max 45 km/h)" else 70
-                            verwendete_zeit = round((entfernung_km * 1.4 / geschwindigkeit) * 60)
-                        else:
-                            typ_faktoren = {
-                                "Moped/Roller (max 45 km/h)": 1.5,
-                                "Supermoto": 1.2,
-                                "Sportler": 1.0,
-                                "Tourer": 1.0
-                            }
-                            verwendete_zeit = round(verwendete_zeit * typ_faktoren.get(typ, 1.0))
+function escapeHtml(str) {
+  return String(str)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
-                        vorschlag = empfehlung(ziel_temp, ziel_wind, verwendete_zeit, empf, typ, ziel_regen)
-
-            if not ziel or not vorschlag:
-                vorschlag = empfehlung(temp, wind, verwendete_zeit, empf, typ, regen)
-
-            if vorschlag:
-                st.markdown(f"### ⏱️ Geschätzte Fahrtzeit: {verwendete_zeit} Minuten")
-                st.markdown("### 👕 Kleidungsempfehlung")
-                for teil in vorschlag:
-                    st.markdown(f"- {teil}")
-
-# Footer
-st.markdown("""
-    <footer style='margin-top: 3rem; padding: 1rem; background: linear-gradient(to right, #222, #444); color: white; text-align: center; font-size: 1.1rem; border-radius: 0.5rem;'>
-        🏍️ <strong>Ride Safe</strong>
-    </footer>
-""", unsafe_allow_html=True)
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Running: http://localhost:${PORT}`);
+  console.log(`Admin:   http://localhost:${PORT}/admin (user: admin, pass: ${ADMIN_PASS})`);
+});
