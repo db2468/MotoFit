@@ -1,154 +1,116 @@
-const express = require("express");
-const basicAuth = require("express-basic-auth");
-const fs = require("fs");
-const path = require("path");
+import streamlit as st
+import json
+import os
+from datetime import datetime
 
-const app = express();
-app.use(express.urlencoded({ extended: true }));
+st.set_page_config(page_title="3D-Druck Ideen", page_icon="🧩", layout="centered")
 
-const DATA_FILE = path.join(__dirname, "ideas.json");
+DATA_FILE = "ideas.json"
+ADMIN_PASS = "1243"
 
-// Passwort: 1243
-const ADMIN_USER = "admin";
-const ADMIN_PASS = "1243";
 
-function loadIdeas() {
-  try {
-    const raw = fs.readFileSync(DATA_FILE, "utf8");
-    const data = JSON.parse(raw);
-    return Array.isArray(data) ? data : [];
-  } catch {
-    return [];
-  }
-}
+def load_ideas():
+    if not os.path.exists(DATA_FILE):
+        return []
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
 
-function saveIdeas(ideas) {
-  fs.writeFileSync(DATA_FILE, JSON.stringify(ideas, null, 2), "utf8");
-}
 
-// ===== Public page: form =====
-app.get("/", (req, res) => {
-  res.type("html").send(`
-<!doctype html>
-<html lang="de">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>3D-Druck Ideen</title>
-  <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; }
-    h1 { margin: 0 0 12px; }
-    p { margin: 0 0 20px; color: #444; }
-    textarea { width: 100%; min-height: 120px; padding: 12px; font-size: 16px; }
-    button { margin-top: 12px; padding: 10px 14px; font-size: 16px; cursor: pointer; }
-    .note { margin-top: 18px; color: #666; font-size: 14px; }
-  </style>
-</head>
-<body>
-  <h1>3D-Druck Idee eintragen</h1>
-  <p>Schreib deine Idee rein und sende ab.</p>
+def save_ideas(ideas):
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(ideas, f, ensure_ascii=False, indent=2)
 
-  <form method="POST" action="/submit">
-    <textarea name="idea" placeholder="z.B. Halterung für ... / Werkzeugbox ... / Scooter-Teil ..."></textarea>
-    <br />
-    <button type="submit">Absenden</button>
-  </form>
 
-  <div class="note">
-    Admin-Ansicht: <code>/admin</code>
-  </div>
-</body>
-</html>
-  `);
-});
-
-app.post("/submit", (req, res) => {
-  const idea = (req.body.idea || "").trim();
-  if (!idea) {
-    return res.status(400).type("html").send("Leeres Feld. Geh zurück und schreib was rein.");
-  }
-
-  const ideas = loadIdeas();
-  ideas.unshift({
-    idea,
-    createdAt: new Date().toISOString(),
-    ip: req.headers["x-forwarded-for"]?.toString().split(",")[0]?.trim() || req.socket.remoteAddress
-  });
-  saveIdeas(ideas);
-
-  res.type("html").send(`
-<!doctype html>
-<html lang="de">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Gespeichert</title></head>
-<body style="font-family:system-ui;max-width:720px;margin:40px auto;padding:0 16px;">
-  <h2>Gespeichert.</h2>
-  <p><a href="/">Zurück</a></p>
-</body>
-</html>
-  `);
-});
-
-// ===== Admin page: protected list =====
-app.use(
-  "/admin",
-  basicAuth({
-    users: { [ADMIN_USER]: ADMIN_PASS },
-    challenge: true, // Browser zeigt Login-Popup
-    realm: "Admin",
-  })
-);
-
-app.get("/admin", (req, res) => {
-  const ideas = loadIdeas();
-
-  const items = ideas
-    .map((x, i) => {
-      const dt = new Date(x.createdAt);
-      const dateStr = isNaN(dt.getTime()) ? x.createdAt : dt.toLocaleString("de-DE");
-      return `
-        <li style="margin:14px 0; padding:12px; border:1px solid #ddd; border-radius:10px;">
-          <div style="color:#666;font-size:13px;margin-bottom:8px;">
-            #${ideas.length - i} • ${dateStr}
-          </div>
-          <div style="white-space:pre-wrap;">${escapeHtml(x.idea)}</div>
-        </li>
-      `;
+def add_idea(name: str, text: str):
+    ideas = load_ideas()
+    ideas.insert(0, {
+        "name": name.strip(),
+        "idea": text.strip(),
+        "created_at": datetime.now().isoformat(timespec="seconds")
     })
-    .join("");
+    save_ideas(ideas)
 
-  res.type("html").send(`
-<!doctype html>
-<html lang="de">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Admin – Ideen</title>
-</head>
-<body style="font-family:system-ui;max-width:900px;margin:40px auto;padding:0 16px;">
-  <h1>Ideen (${ideas.length})</h1>
-  <p style="color:#444;">Passwortgeschützt. Hier siehst du alle Einträge.</p>
 
-  ${ideas.length ? `<ol style="padding-left:18px;">${items}</ol>` : `<p>Noch keine Ideen.</p>`}
+def page_public():
+    st.markdown("## 🧩 3D-Druck Ideenbox")
+    st.write("Trag eine Idee ein. Ich sammle sie und was gut ist wird gedruckt.")
 
-  <hr style="margin:24px 0;" />
-  <p><a href="/">Zur öffentlichen Seite</a></p>
-</body>
-</html>
-  `);
-});
+    with st.form("idea_form", clear_on_submit=True):
+        idea = st.text_area(
+            "✍️ Idee",
+            placeholder="z.B. Halterung für..., Werkzeug-Organizer..., Moped-Teile...",
+            height=140
+        )
+        name = st.text_input("👤 Dein Name", placeholder="Max, Lisa, ...")
+        submitted = st.form_submit_button("✅ Absenden")
 
-function escapeHtml(str) {
-  return String(str)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
+    if submitted:
+        if not idea.strip():
+            st.error("Leeres Ideen-Feld. Schreib eine Idee rein.")
+            return
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Running: http://localhost:${PORT}`);
-  console.log(`Admin:   http://localhost:${PORT}/admin (user: admin, pass: ${ADMIN_PASS})`);
-});
+        # Name optional, aber nicht leer anzeigen
+        safe_name = name.strip() if name.strip() else "Anonym"
+
+        add_idea(safe_name, idea)
+        st.success("Gespeichert.")
+
+
+def page_admin():
+    st.markdown("## 🔒 Admin – Ideen ansehen")
+
+    if "admin_ok" not in st.session_state:
+        st.session_state.admin_ok = False
+
+    if not st.session_state.admin_ok:
+        pw = st.text_input("Passwort", type="password")
+        if st.button("Login"):
+            if pw == ADMIN_PASS:
+                st.session_state.admin_ok = True
+                st.success("OK.")
+                st.rerun()
+            else:
+                st.error("Falsches Passwort.")
+        st.stop()
+
+    ideas = load_ideas()
+
+    col1, col2 = st.columns([1, 1])
+    with col1:
+        if st.button("🔄 Aktualisieren"):
+            st.rerun()
+    with col2:
+        if st.button("🚪 Logout"):
+            st.session_state.admin_ok = False
+            st.rerun()
+
+    st.markdown(f"### 📦 Gespeicherte Ideen: {len(ideas)}")
+
+    if not ideas:
+        st.info("Noch keine Ideen.")
+        return
+
+    for i, item in enumerate(ideas, start=1):
+        created = item.get("created_at", "")
+        idea_text = item.get("idea", "")
+        name = item.get("name", "Anonym")
+
+        with st.container(border=True):
+            st.caption(f"#{i} • {created} • von: {name}")
+            st.write(idea_text)
+
+
+query = st.query_params
+page = (query.get("page") or "").lower()
+
+if page == "admin":
+    page_admin()
+else:
+    page_public()
+
+st.divider()
+st.caption("Admin-Link: füge `?page=admin` an die URL an.")
